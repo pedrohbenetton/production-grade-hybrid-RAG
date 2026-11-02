@@ -232,7 +232,6 @@ def test_ingest_validation_errors(client: TestClient) -> None:
     assert client.delete("/v1/documents/non_existent_doc_id").status_code == 404
 
 
-
 def test_build_container_wires_components_and_rebuilds_bm25(
     monkeypatch: pytest.MonkeyPatch, fake_embedder: FakeEmbedder
 ) -> None:

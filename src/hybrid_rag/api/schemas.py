@@ -196,8 +196,7 @@ class IngestRequest(BaseModel):
         ...,
         min_length=1,
         description=(
-            "Text content of the document (Markdown or HTML). For PDFs, "
-            "base64-encoded bytes."
+            "Text content of the document (Markdown or HTML). For PDFs, base64-encoded bytes."
         ),
     )
     mime_type: MimeType | None = Field(
@@ -228,4 +227,3 @@ class IngestResponse(BaseModel):
 class DeleteDocumentResponse(BaseModel):
     doc_id: str = Field(description="Identifier of the deleted document.")
     deleted_chunks: int = Field(ge=0, description="Number of chunks removed from both indexes.")
-

@@ -1,10 +1,16 @@
 # Production-Grade Hybrid RAG
 
+[![CI](https://github.com/pedrohbenetton/production-grade-hybrid-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/pedrohbenetton/production-grade-hybrid-RAG/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://img.shields.io/badge/mypy-strict-blue)](https://mypy-lang.org/)
+
 Retrieval-augmented generation that is measured instead of assumed: dense + BM25 retrieval fused
 with Reciprocal Rank Fusion, optional cross-encoder reranking, and **claim-level faithfulness
 guardrails** that check every sentence of an answer against the passages it cites.
 
-Python 3.12+ · strict type hints · Pydantic v2 · FastAPI/OpenAPI · Qdrant · 237 tests, 93% coverage ·
+Python 3.12+ · strict type hints · Pydantic v2 · FastAPI/OpenAPI · Qdrant · 241 tests, 93% coverage ·
 `mypy --strict` and `ruff` clean.
 
 ## Does hybrid beat naive RAG? Measured on BEIR/SciFact

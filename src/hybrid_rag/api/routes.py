@@ -148,7 +148,6 @@ def delete_document(doc_id: str, container: ContainerDep) -> DeleteDocumentRespo
     )
 
 
-
 # Sync handlers on purpose: retrieval is CPU-bound (ONNX, BM25), so FastAPI runs
 # them in its threadpool instead of blocking the event loop.
 @router.post(
