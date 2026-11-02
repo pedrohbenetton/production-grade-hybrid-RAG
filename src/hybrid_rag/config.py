@@ -74,6 +74,33 @@ class RerankSettings(BaseModel):
     cache_dir: str = "./data/models"
 
 
+class LLMSettings(BaseModel):
+    """Generator. Without a key (here or ``ANTHROPIC_API_KEY``) /v1/query is disabled."""
+
+    model_config = ConfigDict(frozen=True)
+
+    provider: Literal["anthropic", "none"] = "anthropic"
+    model: str = "claude-sonnet-5-5"
+    api_key: SecretStr | None = None
+    max_tokens: int = Field(1024, ge=1)
+    temperature: float | None = Field(None, ge=0, le=1)  # unset → provider default
+    context_token_budget: int = Field(3000, ge=1)
+
+
+class GuardrailSettings(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    nli_repo: str = "cross-encoder/nli-deberta-v3-small"
+    nli_onnx_file: str = "onnx/model_quint8_avx2.onnx"  # int8; use onnx/model.onnx off x86
+    nli_cache_dir: str = "./data/models"
+    entailment_threshold: float = Field(0.5, gt=0, le=1)
+    policy: Literal["annotate", "filter", "abstain"] = "filter"
+    min_faithfulness: float = Field(0.8, ge=0, le=1)  # used by policy "abstain"
+    # Abstain before generating when the top hit scores below this. Scores are only
+    # comparable within a mode: it is meaningful for reranker scores, not RRF scores.
+    min_relevance: float | None = None
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RAG_", env_nested_delimiter="__", env_file=".env", extra="ignore"
@@ -86,3 +113,5 @@ class Settings(BaseSettings):
     bm25: BM25Settings = BM25Settings()
     retrieval: RetrievalSettings = RetrievalSettings()
     rerank: RerankSettings = RerankSettings()
+    llm: LLMSettings = LLMSettings()
+    guardrails: GuardrailSettings = GuardrailSettings()

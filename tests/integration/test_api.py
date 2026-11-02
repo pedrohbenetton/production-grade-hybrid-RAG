@@ -3,6 +3,7 @@ from collections.abc import Iterator
 import pytest
 from conftest import FakeEmbedder, make_chunk
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from qdrant_client import QdrantClient
 from test_hybrid_retriever import CORPUS, SETTINGS, LengthReranker
 
@@ -10,6 +11,7 @@ from hybrid_rag.api.app import create_app
 from hybrid_rag.api.container import Container, build_container
 from hybrid_rag.config import (
     ChunkingSettings,
+    LLMSettings,
     QdrantSettings,
     RerankSettings,
     Settings,
@@ -124,6 +126,7 @@ def test_build_container_wires_components_and_rebuilds_bm25(
         _env_file=None,
         qdrant=QdrantSettings(url=None, path=None),
         rerank=RerankSettings(provider="none"),
+        llm=LLMSettings(provider="none"),
     )
     container = build_container(settings)
     chunk = make_chunk("persisted in qdrant only")
@@ -133,3 +136,30 @@ def test_build_container_wires_components_and_rebuilds_bm25(
 
     assert chunk.chunk_id in rebuilt.sparse
     assert not rebuilt.retriever.has_reranker
+    assert rebuilt.service is None
+
+
+def test_build_container_wires_generation_only_when_an_llm_is_configured(
+    monkeypatch: pytest.MonkeyPatch, fake_embedder: FakeEmbedder
+) -> None:
+    built: list[tuple[object, ...]] = []
+
+    class StubNLI:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            built.append(args)
+
+    monkeypatch.setattr(
+        "hybrid_rag.api.container.FastEmbedEmbedder", lambda *a, **kw: fake_embedder
+    )
+    monkeypatch.setattr("hybrid_rag.api.container.OnnxNLIModel", StubNLI)
+    settings = Settings(
+        _env_file=None,
+        qdrant=QdrantSettings(url=None, path=None),
+        rerank=RerankSettings(provider="none"),
+        llm=LLMSettings(api_key=SecretStr("test-key")),
+    )
+
+    container = build_container(settings)
+
+    assert container.service is not None
+    assert built == [(settings.guardrails.nli_repo, settings.guardrails.nli_onnx_file)]

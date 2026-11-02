@@ -10,6 +10,8 @@ import pytest
 from numpy.typing import NDArray
 
 from hybrid_rag.domain.models import ContextualChunk, ScoredChunk
+from hybrid_rag.generation.context import ContextPassage
+from hybrid_rag.guardrails.models import Claim, ClaimVerdict
 
 FIXTURES = Path(__file__).parent / "fixtures"
 _WORD = re.compile(r"[a-z]+")
@@ -85,6 +87,56 @@ def make_chunk(
 @pytest.fixture
 def fixtures_dir() -> Path:
     return FIXTURES
+
+
+class FakeLLM:
+    """Scripted LLM: returns ``reply`` (or raises ``error``) and records every call."""
+
+    def __init__(self, reply: str = "", error: Exception | None = None) -> None:
+        self.reply = reply
+        self.error = error
+        self.calls: list[tuple[str, str, int]] = []
+
+    def complete(self, *, system: str, prompt: str, max_tokens: int) -> str:
+        self.calls.append((system, prompt, max_tokens))
+        if self.error is not None:
+            raise self.error
+        return self.reply
+
+
+class SubsetVerifier:
+    """Deterministic verifier: a claim is entailed iff all its words occur in one of
+    its premises (the cited passages, or every passage when it cites none)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def verify(
+        self, claims: Sequence[Claim], passages: Sequence[ContextPassage]
+    ) -> list[ClaimVerdict]:
+        self.calls += 1
+        by_n = {p.n: p for p in passages}
+        verdicts: list[ClaimVerdict] = []
+        for claim in claims:
+            premises = [by_n[n] for n in claim.citations if n in by_n] or list(passages)
+            words = _WORD.findall(claim.text.lower())
+            support = next(
+                (
+                    p
+                    for p in premises
+                    if words and set(words) <= set(_WORD.findall(p.chunk.text.lower()))
+                ),
+                None,
+            )
+            verdicts.append(
+                ClaimVerdict(
+                    claim=claim,
+                    verdict="entailed" if support else "neutral",
+                    entailment=1.0 if support else 0.0,
+                    evidence=support.n if support else None,
+                )
+            )
+        return verdicts
 
 
 def ranked(*chunk_ids: str, scale: float = 1.0) -> list[ScoredChunk]:

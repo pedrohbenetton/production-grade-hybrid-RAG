@@ -170,10 +170,15 @@ Generator: **Claude** via the official `anthropic` SDK, behind an `LLMClient` pr
 
 1. **Grounded prompt:** answer only from context, cite `[n]`, say "insufficient context" otherwise.
 2. **Citation validity:** every `[n]` must reference an existing context chunk (deterministic check).
-3. **Claim-level faithfulness:** sentences → atomic claims; each verified by an NLI cross-encoder (`cross-encoder/nli-deberta-v3-small`) against the chunks it cites (fallback: all context).
+3. **Claim-level faithfulness:** sentences → claims (the prompt demands one claim per sentence, so sentence-level approximates atomic claims without a second LLM call); each verified by an NLI cross-encoder (`cross-encoder/nli-deberta-v3-small`, int8 ONNX on CPU — no torch) against the chunks it cites (fallback: all context). Passages are scored one by one, not concatenated (512-token window), so a claim that needs two passages combined counts as unsupported — a deliberate, conservative trade-off. Out-of-range `[n]` markers are reported in `invalid_citations` and stripped from filtered answers.
+   **Measured:** true paraphrases score entailment ≥ 0.99, unsupported claims < 0.15, in both int8 and fp32. But SNLI/MNLI-style models label *off-topic* claims "contradiction" rather than "neutral", so decisions use **only** `entailed`; the neutral/contradicted split is informational.
    `faithfulness = |entailed claims| / |claims|`.
 4. **Policy (configurable):** `annotate` (return verdicts) · `filter` (remove unsupported claims) · `abstain` (below threshold → refuse).
-5. **Retrieval-side guard:** if max rerank score < `min_relevance`, skip generation and abstain — the cheapest hallucination is the one never generated.
+   `filter` rebuilds the answer from the entailed sentences only, so unsupported text never reaches the client; every claim (including dropped ones) is still returned in `claims[]`.
+5. **Retrieval-side guard:** if there are no hits, or the top hit scores below `min_relevance`, skip generation and abstain — the cheapest hallucination is the one never generated. Scores are only comparable within a mode, so the threshold is meaningful for reranker scores, not RRF scores (off by default).
+6. **Prompt-injection hygiene:** passages are wrapped in `<passage>` tags, escaped so they cannot close their own tag, and the system prompt declares them untrusted data. This lowers the risk; the NLI check is the actual backstop, since an injected instruction produces claims no passage entails.
+
+Abstain reasons: `no_relevant_context` · `model_abstained` (exact refusal phrase) · `no_supported_claims` · `low_faithfulness`.
 
 The response always exposes `faithfulness`, `claims[]`, and `citations[]`, so clients can enforce their own policy.
 

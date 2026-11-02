@@ -8,17 +8,21 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=2.4.0",
     "fastapi>=0.162.0",
     "fastembed>=0.9.1",
     "flashrank>=0.2.10",
+    "huggingface-hub>=1.33.0",
     "markdown-it-py>=4.2.0",
     "numpy>=2.5.4",
+    "onnxruntime>=1.31.1",
     "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
     "pymupdf>=2.0",
     "qdrant-client>=1.20.0",
     "selectolax>=1.0.2",
     "snowballstemmer>=3.1.1",
+    "tokenizers>=0.23.3",
     "uvicorn>=0.54.0",
 ]
 
@@ -60,7 +64,14 @@ mypy_path = "src:tests"
 untyped_calls_exclude = ["pymupdf", "flashrank"]
 
 [[tool.mypy.overrides]]
-module = ["pymupdf.*", "fitz.*", "snowballstemmer.*", "flashrank.*", "cohere.*"]
+module = [
+    "pymupdf.*",
+    "fitz.*",
+    "snowballstemmer.*",
+    "flashrank.*",
+    "cohere.*",
+    "onnxruntime.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
