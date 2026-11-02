@@ -200,7 +200,10 @@ OpenAPI/Swagger at `/docs`, every schema with examples. Per-stage latency return
 
 ## 7. Evaluation & benchmark
 
-- **Dataset:** BEIR **SciFact** (5,183 abstracts, 300 test claims, human relevance judgments), downloaded from the official BEIR host; the archive SHA-256 is recorded in the report.
+- **Datasets:**
+  1. BEIR **SciFact** (5,183 abstracts, 300 test claims, scientific domain).
+  2. BEIR **NFCorpus** (3,633 PubMed articles, 323 natural language medical questions).
+  Both downloaded from the official BEIR host with SHA-256 archive checksums recorded.
 - **Same pipeline as production:** every document is ingested through parse → chunk → contextualize → index (not a shortcut path), and queries go through the same `HybridRetriever` the API uses. Rankings are scored per *document*: a document's rank is its best chunk's rank.
 - **Systems compared** (same chunks, same embedder):
   1. Naive RAG — dense only
@@ -208,11 +211,19 @@ OpenAPI/Swagger at `/docs`, every schema with examples. Per-stage latency return
   3. Hybrid — dense + BM25 + RRF
   4. Hybrid + rerank (MiniLM-L-12)
   5. Hybrid + rerank (TinyBERT-L-2)
-- **Retrieval metrics:** P@1/5/10, R@10, MRR@10, nDCG@10 (`evaluation/metrics.py`, unit-tested against hand-computed values). Differences between systems are reported as **paired bootstrap 95% CIs over queries**: with 300 queries, a gap of one or two points is often noise, and the report says so (✓/✗ only when the interval excludes 0).
+- **Retrieval metrics:** P@1/5/10, R@10, MRR@10, nDCG@10 (`evaluation/metrics.py`, unit-tested against hand-computed values). Differences between systems are reported as **paired bootstrap 95% CIs over queries**: with ~300 queries, a gap of one or two points is often noise, and the report says so (✓/✗ only when the interval excludes 0).
 - **Sanity anchors:** published BEIR nDCG@10 on SciFact is ≈0.665 for BM25 and ≈0.71 for bge-small; this repo measures 0.692 and 0.720 (in-house BM25; int8 ONNX bge-small with title prepended) — same ballpark, so the harness is not silently broken.
 - **Generation metrics:** faithfulness is computed per request (§5); it is not part of this retrieval benchmark.
-- **Reproduce:** `uv run --group bench hybrid-rag-bench` (downloads SciFact, indexes it once into `data/bench`, runs all systems, writes `docs/benchmark.{json,md,png}`); `--report-only` regenerates the Markdown and chart from the saved JSON. README numbers come only from this script — no hand-edited figures.
-- **Result (see `docs/benchmark.md`):** hybrid ranks first on every metric but its gain over naive RAG (+0.015 nDCG@10, 95% CI [−0.012, +0.039]) is **not statistically distinguishable from zero** on SciFact; BM25 alone is slightly below dense; and the cross-encoder rerankers did **not** help in this domain (TinyBERT significantly worse, MiniLM neutral-to-worse) while multiplying latency (p50 24 ms → 3.6 s for MiniLM). One dataset is one data point; the claim that hybrid beats naive RAG generalizes only if it is replicated elsewhere.
+- **Reproduce:**
+  ```bash
+  uv run --group bench hybrid-rag-bench --dataset scifact   # outputs docs/benchmark.{json,md,png}
+  uv run --group bench hybrid-rag-bench --dataset nfcorpus  # outputs docs/benchmark_nfcorpus.{json,md,png}
+  ```
+  `--report-only` regenerates the Markdown and chart from the saved JSON.
+- **Results:**
+  - **SciFact (see `docs/benchmark.md`):** Hybrid ranks first (+0.015 nDCG@10), but the gain over naive RAG is within statistical noise (CI [−0.012, +0.039]).
+  - **NFCorpus (see `docs/benchmark_nfcorpus.md`):** Hybrid significantly outperforms Naive RAG across P@1 (+0.071, CI [+0.028, +0.115] ✓), MRR@10 (+0.050, CI [+0.021, +0.080] ✓), and nDCG@10 (+0.026, CI [+0.012, +0.040] ✓), demonstrating that hybrid retrieval excels when vocabulary mismatch between query and document is pronounced.
+  - **Rerankers:** Across both corpora, generic MS MARCO cross-encoders failed to beat plain RRF hybrid fusion while introducing 15–300× higher latency.
 
 ---
 

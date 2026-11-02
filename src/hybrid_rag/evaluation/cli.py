@@ -133,6 +133,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--data-dir", default="data/beir", help="where BEIR archives are unpacked")
     parser.add_argument("--workdir", default="data/bench", help="index cache (gitignored)")
     parser.add_argument("--out-dir", default="docs", help="where benchmark.{json,md,png} go")
+    parser.add_argument(
+        "--out-prefix",
+        default="",
+        help=(
+            "prefix for output files (defaults to 'benchmark' for scifact, "
+            "'benchmark_<dataset>' otherwise)"
+        ),
+    )
     parser.add_argument("--limit-queries", type=int, default=0, help="smoke test: first N queries")
     parser.add_argument("--systems", nargs="*", help="subset of system names to run")
     parser.add_argument("--baseline", default="dense", help="system the paired deltas compare to")
@@ -142,7 +150,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    results_path = out / "benchmark.json"
+    prefix = (
+        args.out_prefix
+        if args.out_prefix
+        else ("benchmark" if args.dataset == "scifact" else f"benchmark_{args.dataset}")
+    )
+    results_path = out / f"{prefix}.json"
     if args.report_only:
         result = BenchmarkResult.model_validate_json(results_path.read_text(encoding="utf-8"))
     else:
@@ -150,12 +163,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         results_path.write_text(result.model_dump_json(), encoding="utf-8")
 
     summary = summarize(result, baseline=args.baseline)
-    (out / "benchmark.md").write_text(render_markdown(result, summary), encoding="utf-8")
+    (out / f"{prefix}.md").write_text(render_markdown(result, summary), encoding="utf-8")
     try:
-        render_chart(result, summary, out / "benchmark.png")
+        render_chart(result, summary, out / f"{prefix}.png")
     except ImportError as exc:
         print(f"chart skipped: {exc}", file=sys.stderr)
-    print(f"wrote {out / 'benchmark.md'}", file=sys.stderr)
+    print(f"wrote {out / f'{prefix}.md'}", file=sys.stderr)
     return 0
 
 

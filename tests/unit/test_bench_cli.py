@@ -60,3 +60,21 @@ def test_unknown_baseline_is_rejected(tmp_path: Path) -> None:
     write_result(tmp_path)
     with pytest.raises(ValueError, match="baseline"):
         main(["--report-only", "--out-dir", str(tmp_path), "--baseline", "nope"])
+
+
+def test_custom_dataset_prefix(tmp_path: Path) -> None:
+    write_result(tmp_path)
+    (tmp_path / "benchmark.json").rename(tmp_path / "benchmark_nfcorpus.json")
+    assert (
+        main(
+            [
+                "--report-only",
+                "--out-dir",
+                str(tmp_path),
+                "--dataset",
+                "nfcorpus",
+            ]
+        )
+        == 0
+    )
+    assert (tmp_path / "benchmark_nfcorpus.md").exists()
