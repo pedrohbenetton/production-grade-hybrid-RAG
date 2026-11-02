@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+  <title>Vector Databases</title>
+  <style>.x { color: red; }</style>
+  <script>alert(1)</script>
+</head>
+<body>
+  <nav><a href="/">Home</a></nav>
+  <main>
+    <h1>Vector Databases</h1>
+    <p>Vector databases index embeddings for similarity search.</p>
+    <h2>HNSW</h2>
+    <p>HNSW builds a layered proximity graph.</p>
+    <ul>
+      <li>m controls graph degree.</li>
+      <li>ef controls search breadth.</li>
+    </ul>
+    <h2>Benchmarks</h2>
+    <table>
+      <tr><th>Engine</th><th>Recall</th></tr>
+      <tr><td>Qdrant</td><td>0.98</td></tr>
+    </table>
+    <div>Loose text inside a div.</div>
+    <pre><code>client.search(collection, vector)</code></pre>
+  </main>
+  <footer>Copyright</footer>
+</body>
+</html>
