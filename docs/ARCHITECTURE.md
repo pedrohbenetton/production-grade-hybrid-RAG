@@ -140,7 +140,8 @@ $$\mathrm{RRF}(d) = \sum_{r \in R} \frac{w_r}{k + \mathrm{rank}_r(d)}$$
 - Default: **FlashRank** (`ms-marco-MiniLM-L-12-v2`, local cross-encoder).
 - Optional: **Cohere Rerank** when `COHERE_API_KEY` is set.
 - Cross-encoders score `(query, chunk)` jointly → much higher precision than bi-encoders, but O(N) inference — hence applied only to the fused top-N.
-- Output: top `k_final = 5`.
+- Output: top `k_final = 5`. The funnel never narrows below the requested `k` (candidates = `max(k, N)`).
+- **Measured cost** (CPU, MiniLM-L-12, 18 candidates, max_length 512): ≈1.6 s/query, vs ≈20 ms for `hybrid` without rerank. The reranker dominates latency; the benchmark reports quality *and* p50 latency per mode so the trade-off (and a lighter model such as TinyBERT-L-2) is decided on data.
 
 ### 4.5 Context builder
 Packs reranked chunks into a token budget, ordered by score, each tagged `[n]` with `doc_id`, `section_path`, `page` for citations.
@@ -184,7 +185,7 @@ The response always exposes `faithfulness`, `claims[]`, and `citations[]`, so cl
 |---|---|---|
 | `POST` | `/v1/ingest` | Upload file(s) or URL; returns `IndexReport` |
 | `POST` | `/v1/query` | Full RAG: retrieve → rerank → generate → verify |
-| `POST` | `/v1/retrieve` | Retrieval only (debug/eval); `mode: naive \| hybrid \| hybrid_rerank` |
+| `POST` | `/v1/retrieve` | Retrieval only; `mode: dense \| sparse \| hybrid \| hybrid_rerank` — the same four systems the benchmark compares (`dense` = naive RAG) |
 | `DELETE` | `/v1/documents/{doc_id}` | Remove a document and its chunks |
 | `GET` | `/health` · `/ready` | Liveness / readiness (index loaded, models warm) |
 

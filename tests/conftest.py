@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from hybrid_rag.domain.models import ContextualChunk
+from hybrid_rag.domain.models import ContextualChunk, ScoredChunk
 
 FIXTURES = Path(__file__).parent / "fixtures"
 _WORD = re.compile(r"[a-z]+")
@@ -85,6 +85,16 @@ def make_chunk(
 @pytest.fixture
 def fixtures_dir() -> Path:
     return FIXTURES
+
+
+def ranked(*chunk_ids: str, scale: float = 1.0) -> list[ScoredChunk]:
+    """A ranked list in the given order, with descending (arbitrarily scaled) scores."""
+    return [
+        ScoredChunk(
+            chunk=make_chunk(f"text {cid}", chunk_id=cid), score=scale * (len(chunk_ids) - n)
+        )
+        for n, cid in enumerate(chunk_ids)
+    ]
 
 
 def build_pdf(path: Path) -> Path:
