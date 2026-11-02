@@ -141,7 +141,7 @@ $$\mathrm{RRF}(d) = \sum_{r \in R} \frac{w_r}{k + \mathrm{rank}_r(d)}$$
 - Optional: **Cohere Rerank** when `COHERE_API_KEY` is set.
 - Cross-encoders score `(query, chunk)` jointly → much higher precision than bi-encoders, but O(N) inference — hence applied only to the fused top-N.
 - Output: top `k_final = 5`. The funnel never narrows below the requested `k` (candidates = `max(k, N)`).
-- **Measured cost** (CPU, MiniLM-L-12, 18 candidates, max_length 512): ≈1.6 s/query, vs ≈20 ms for `hybrid` without rerank. The reranker dominates latency; the benchmark reports quality *and* p50 latency per mode so the trade-off (and a lighter model such as TinyBERT-L-2) is decided on data.
+- **Measured cost** (CPU, 30 candidates of real abstracts, max_length 512): MiniLM-L-12 p50 ≈3.6 s / p95 ≈4.7 s per query; TinyBERT-L-2 ≈157 ms; `hybrid` without rerank ≈24 ms. On BEIR/SciFact neither reranker improved ranking quality over plain hybrid (§7), so reranking is a per-domain decision to validate with the benchmark, not a default win. Generic MS MARCO cross-encoders are the likely mismatch for scientific claim retrieval (a hypothesis, not tested here).
 
 ### 4.5 Context builder
 Packs reranked chunks into a token budget, ordered by score, each tagged `[n]` with `doc_id`, `section_path`, `page` for citations.
@@ -200,15 +200,19 @@ OpenAPI/Swagger at `/docs`, every schema with examples. Per-stage latency return
 
 ## 7. Evaluation & benchmark
 
-- **Dataset:** BEIR **SciFact** (public corpus + human relevance judgments, small enough for CI).
+- **Dataset:** BEIR **SciFact** (5,183 abstracts, 300 test claims, human relevance judgments), downloaded from the official BEIR host; the archive SHA-256 is recorded in the report.
+- **Same pipeline as production:** every document is ingested through parse → chunk → contextualize → index (not a shortcut path), and queries go through the same `HybridRetriever` the API uses. Rankings are scored per *document*: a document's rank is its best chunk's rank.
 - **Systems compared** (same chunks, same embedder):
-  1. Naive — dense only
+  1. Naive RAG — dense only
   2. BM25 only
   3. Hybrid — dense + BM25 + RRF
-  4. Hybrid + rerank
-- **Retrieval metrics:** Precision@k, Recall@k, MRR@10, nDCG@10 (implemented in `eval/metrics.py`, unit-tested against hand-computed cases).
-- **Generation metrics:** faithfulness (§5) and answer relevance on a sampled subset.
-- `make bench` regenerates `docs/benchmark.md` + chart PNG; README numbers come only from that script — no hand-edited figures.
+  4. Hybrid + rerank (MiniLM-L-12)
+  5. Hybrid + rerank (TinyBERT-L-2)
+- **Retrieval metrics:** P@1/5/10, R@10, MRR@10, nDCG@10 (`evaluation/metrics.py`, unit-tested against hand-computed values). Differences between systems are reported as **paired bootstrap 95% CIs over queries**: with 300 queries, a gap of one or two points is often noise, and the report says so (✓/✗ only when the interval excludes 0).
+- **Sanity anchors:** published BEIR nDCG@10 on SciFact is ≈0.665 for BM25 and ≈0.71 for bge-small; this repo measures 0.692 and 0.720 (in-house BM25; int8 ONNX bge-small with title prepended) — same ballpark, so the harness is not silently broken.
+- **Generation metrics:** faithfulness is computed per request (§5); it is not part of this retrieval benchmark.
+- **Reproduce:** `uv run --group bench hybrid-rag-bench` (downloads SciFact, indexes it once into `data/bench`, runs all systems, writes `docs/benchmark.{json,md,png}`); `--report-only` regenerates the Markdown and chart from the saved JSON. README numbers come only from this script — no hand-edited figures.
+- **Result (see `docs/benchmark.md`):** hybrid ranks first on every metric but its gain over naive RAG (+0.015 nDCG@10, 95% CI [−0.012, +0.039]) is **not statistically distinguishable from zero** on SciFact; BM25 alone is slightly below dense; and the cross-encoder rerankers did **not** help in this domain (TinyBERT significantly worse, MiniLM neutral-to-worse) while multiplying latency (p50 24 ms → 3.6 s for MiniLM). One dataset is one data point; the claim that hybrid beats naive RAG generalizes only if it is replicated elsewhere.
 
 ---
 
@@ -222,8 +226,8 @@ src/hybrid_rag/
   retrieval/{dense,sparse,fusion,rerank,hybrid}.py
   generation/{llm,prompts,context}.py
   guardrails/{claims,nli,policy}.py
-  api/{app,routes,deps}.py
-eval/{datasets,metrics,run_benchmark}.py
+  api/{app,routes,schemas,container}.py
+  evaluation/{beir,metrics,stats,runner,report,cli}.py   # hybrid-rag-bench
 tests/{unit,integration}/
 ```
 
