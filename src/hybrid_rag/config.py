@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +25,31 @@ class ChunkingSettings(BaseModel):
         return self
 
 
+class EmbeddingSettings(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    model: str = "BAAI/bge-small-en-v1.5"
+    batch_size: int = Field(64, ge=1)
+
+
+class QdrantSettings(BaseModel):
+    """``url`` → server mode; else ``path`` → embedded on-disk; else in-memory."""
+
+    model_config = ConfigDict(frozen=True)
+
+    url: str | None = None
+    path: str | None = "./data/qdrant"
+    api_key: SecretStr | None = None
+    collection: str = "chunks"
+
+
+class BM25Settings(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    k1: float = Field(1.2, ge=0)
+    b: float = Field(0.75, ge=0, le=1)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RAG_", env_nested_delimiter="__", env_file=".env", extra="ignore"
@@ -32,3 +57,6 @@ class Settings(BaseSettings):
 
     chunking: ChunkingSettings = ChunkingSettings()
     contextual_llm: bool = False
+    embedding: EmbeddingSettings = EmbeddingSettings()
+    qdrant: QdrantSettings = QdrantSettings()
+    bm25: BM25Settings = BM25Settings()

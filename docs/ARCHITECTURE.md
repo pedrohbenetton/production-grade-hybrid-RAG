@@ -114,10 +114,16 @@ Isolated chunks lose referents ("it", "the method above"). Two levels:
 ### 4.1 Dense retrieval
 - Store: **Qdrant** (local on-disk mode for dev/tests, server mode via `QDRANT_URL` in prod).
 - Embeddings: `BAAI/bge-small-en-v1.5` via FastEmbed (ONNX, CPU, 384-d). Swappable through `Embedder` protocol.
-- Distance: cosine; HNSW defaults (`m=16`, `ef_construct=100`).
+- Distance: cosine; HNSW defaults (`m=16`, `ef_construct=100`); keyword payload index on `doc_id` (server mode).
+- Point ID = `uuid5(namespace, chunk_id)` — deterministic, so upserts are idempotent. Opening a collection with a different vector size fails fast (`DimensionMismatchError`) instead of silently mixing embedding spaces.
+- Asymmetric embeddings: `embed_query` vs `embed` (passage) apply the model's query/passage prompts.
+
+### 4.1.1 Indexing (`indexing.py`)
+`ids_for_doc(doc_id)` from Qdrant → `diff_chunks` → embed **only** `to_add` (batched) → upsert dense + sparse → delete `to_remove`. Add-before-remove so a concurrent reader never sees a document vanish mid-update. An unchanged document costs zero embedding calls (tested).
 
 ### 4.2 Sparse retrieval
-- **BM25 (Okapi)**, `k1=1.2`, `b=0.75`, implemented over a persisted inverted index (`bm25s`).
+- **BM25 (Okapi)**, `k1=1.2`, `b=0.75`, Lucene IDF `ln(1 + (N−df+0.5)/(df+0.5))`, implemented in-house as an **incremental** inverted index (`retrieval/sparse.py`). Static libraries (`bm25s`, `rank_bm25`) must rebuild the whole corpus on every change; here N, df and avgdl are maintained on add/remove, so removing a chunk is provably equivalent to never indexing it (tested).
+- Not persisted: Qdrant payloads store the full chunk, so Qdrant is the **system of record** and BM25 is rebuilt from it at startup (`rebuild_sparse`, O(total tokens)). Comfortable up to ~10⁵ chunks; beyond that, switch to Qdrant native sparse vectors with the IDF modifier behind the same interface.
 - Analyzer: lowercase → Unicode NFKC → stopwords → Snowball stemmer. Same analyzer at index and query time (unit-tested invariant).
 
 ### 4.3 Reciprocal Rank Fusion

@@ -85,3 +85,17 @@ class ContextualChunk(Chunk):
 
     context_prefix: str
     embed_text: NonBlankStr
+
+
+class ScoredChunk(_Frozen):
+    """A retrieval hit. ``score`` is only comparable within one retriever's list."""
+
+    chunk: ContextualChunk
+    score: float
+
+
+class IndexReport(_Frozen):
+    doc_id: str
+    added: int = Field(ge=0)
+    unchanged: int = Field(ge=0)
+    removed: int = Field(ge=0)

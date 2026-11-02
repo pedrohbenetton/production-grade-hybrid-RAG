@@ -9,6 +9,8 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from hybrid_rag.domain.models import ContextualChunk
+
 FIXTURES = Path(__file__).parent / "fixtures"
 _WORD = re.compile(r"[a-z]+")
 
@@ -31,16 +33,24 @@ class FakeEmbedder:
     splitter needs to find topic boundaries — without downloading a model.
     """
 
-    dim = 256
+    dimension = 256
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed_query(self, text: str) -> NDArray[np.float32]:
+        vector: NDArray[np.float32] = self.embed([text])[0]
+        return vector
 
     def embed(self, texts: Sequence[str]) -> NDArray[np.float32]:
-        out = np.zeros((len(texts), self.dim), dtype=np.float32)
+        self.calls += 1
+        out = np.zeros((len(texts), self.dimension), dtype=np.float32)
         for row, text in enumerate(texts):
             for word in _WORD.findall(text.lower()):
                 if len(word) <= 3:
                     continue
                 bucket = int.from_bytes(hashlib.md5(word.encode()).digest()[:4], "little")
-                out[row, bucket % self.dim] += 1.0
+                out[row, bucket % self.dimension] += 1.0
         norms = np.linalg.norm(out, axis=1, keepdims=True)
         return (out / np.where(norms == 0, 1.0, norms)).astype(np.float32)
 
@@ -48,6 +58,28 @@ class FakeEmbedder:
 @pytest.fixture
 def fake_embedder() -> FakeEmbedder:
     return FakeEmbedder()
+
+
+def make_chunk(
+    text: str,
+    *,
+    chunk_id: str | None = None,
+    doc_id: str = "doc",
+    path: tuple[str, ...] = (),
+    position: int = 0,
+) -> ContextualChunk:
+    """Chunk whose ``embed_text`` is exactly ``text`` (no prefix), so BM25
+    document lengths in tests are what the test author sees."""
+    return ContextualChunk(
+        chunk_id=chunk_id or hashlib.sha256(f"{doc_id}|{text}".encode()).hexdigest(),
+        doc_id=doc_id,
+        text=text,
+        section_path=path,
+        token_count=len(text.split()),
+        position=position,
+        context_prefix="",
+        embed_text=text,
+    )
 
 
 @pytest.fixture
