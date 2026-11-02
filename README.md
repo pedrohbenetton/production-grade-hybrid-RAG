@@ -85,8 +85,24 @@ uv run uvicorn --factory hybrid_rag.api.app:create_app
 Swagger UI at <http://localhost:8000/docs>. Models (~130 MB embedder, ~180 MB NLI when generation
 is enabled) download on first use into `./data/models`.
 
-**Index documents** (an HTTP ingest endpoint is on the roadmap). Embedded Qdrant is
-single-process, so stop the server first, or point both at a Qdrant server with `RAG_QDRANT__URL`:
+**Index documents**
+
+You can index documents directly through the API while the server runs:
+
+```bash
+# Ingest Markdown or HTML from JSON payload
+curl -s localhost:8000/v1/ingest -H 'content-type: application/json' \
+  -d '{"source_uri": "notes.md", "content": "# Architecture\n\nHybrid RAG combines dense and BM25 retrieval."}'
+
+# Or upload a file (.md, .html, .pdf)
+curl -s localhost:8000/v1/ingest/file -F "file=@sample.md"
+
+# Delete a document by doc_id (or source_uri)
+curl -s -X DELETE localhost:8000/v1/documents/notes.md
+```
+
+You can also index programmatically in Python (embedded Qdrant is single-process, so do this with
+the server stopped or point both at a Qdrant server with `RAG_QDRANT__URL`):
 
 ```python
 from pathlib import Path
@@ -116,6 +132,9 @@ per-stage timings.
 
 | Endpoint | Purpose |
 |---|---|
+| `POST /v1/ingest` | Ingest Markdown or HTML (or base64 PDF) from JSON; returns `doc_id`, added/unchanged/removed |
+| `POST /v1/ingest/file` | Ingest an uploaded file (`.md`, `.html`, `.pdf`) via multipart form |
+| `DELETE /v1/documents/{doc_id}` | Remove a document and its chunks from dense and sparse stores |
 | `POST /v1/retrieve` | Retrieval only. `mode`: `dense` (naive RAG) · `sparse` · `hybrid` · `hybrid_rerank` |
 | `POST /v1/query` | Retrieve → generate → verify. `policy`: `annotate` · `filter` · `abstain` |
 | `GET /health` · `GET /ready` | Liveness · readiness (index loaded, chunk count) |
@@ -172,8 +191,6 @@ RRF are tested against hand-computed values; the guardrail and API layers are te
 
 ## Limitations and roadmap
 
-- **No HTTP ingest yet.** `POST /v1/ingest` and `DELETE /v1/documents/{id}` are planned; today
-  documents are indexed from Python (above) or by the benchmark.
 - **Generation was verified only against a fake LLM.** The Anthropic client is unit-tested, but this
   repository has not been run against the live API.
 - **LLM-written chunk context** (Contextual Retrieval): the ingestion pipeline accepts a

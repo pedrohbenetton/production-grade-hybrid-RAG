@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from hybrid_rag.domain.models import IndexReport, MimeType
 from hybrid_rag.generation.service import AnswerResult
 from hybrid_rag.guardrails.models import Verdict
 from hybrid_rag.guardrails.policy import AbstainReason, PolicyMode
@@ -169,3 +170,62 @@ class HealthResponse(BaseModel):
 class ReadyResponse(BaseModel):
     status: Literal["ready"] = "ready"
     chunks: int = Field(ge=0)
+
+
+class IngestRequest(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "source_uri": "docs/architecture.md",
+                    "content": "# Architecture\n\nHybrid RAG combines dense and sparse retrieval.",
+                    "mime_type": "text/markdown",
+                }
+            ]
+        }
+    )
+
+    source_uri: Query = Field(
+        ...,
+        description=(
+            "URI or filename of the document (used to derive doc_id and detect "
+            "MIME type when omitted)."
+        ),
+    )
+    content: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Text content of the document (Markdown or HTML). For PDFs, "
+            "base64-encoded bytes."
+        ),
+    )
+    mime_type: MimeType | None = Field(
+        None,
+        description=(
+            "Document MIME type ('text/markdown', 'text/html', 'application/pdf'). "
+            "Inferred from source_uri if omitted."
+        ),
+    )
+
+
+class IngestResponse(BaseModel):
+    doc_id: str = Field(description="Content-addressed document ID.")
+    added: int = Field(ge=0, description="New chunks embedded and indexed.")
+    unchanged: int = Field(ge=0, description="Chunks already up-to-date (0 embeddings spent).")
+    removed: int = Field(ge=0, description="Stale chunks removed from the indexes.")
+
+    @classmethod
+    def from_report(cls, report: IndexReport) -> IngestResponse:
+        return cls(
+            doc_id=report.doc_id,
+            added=report.added,
+            unchanged=report.unchanged,
+            removed=report.removed,
+        )
+
+
+class DeleteDocumentResponse(BaseModel):
+    doc_id: str = Field(description="Identifier of the deleted document.")
+    deleted_chunks: int = Field(ge=0, description="Number of chunks removed from both indexes.")
+

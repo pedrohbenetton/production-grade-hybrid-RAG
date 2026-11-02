@@ -106,6 +106,9 @@ def test_rerank_mode_without_reranker_is_a_clear_client_error(
 def test_openapi_documents_the_contract(client: TestClient) -> None:
     schema = client.get("/openapi.json").json()
     assert "/v1/retrieve" in schema["paths"]
+    assert "/v1/ingest" in schema["paths"]
+    assert "/v1/ingest/file" in schema["paths"]
+    assert "/v1/documents/{doc_id}" in schema["paths"]
     request = schema["components"]["schemas"]["RetrieveRequest"]
     assert request["examples"]
     assert set(request["properties"]["mode"]["enum"]) == {
@@ -114,6 +117,120 @@ def test_openapi_documents_the_contract(client: TestClient) -> None:
         "hybrid",
         "hybrid_rerank",
     }
+
+
+def test_ingest_json_markdown_idempotent_and_delete(client: TestClient) -> None:
+    doc_payload = {
+        "source_uri": "quantum_computing.md",
+        "content": (
+            "# Quantum Computing\n\n"
+            "Superconducting qubits enable quantum supremacy across combinatorial problems.\n\n"
+            "## Error Correction\n\n"
+            "Surface codes provide fault tolerance against phase and bit flips."
+        ),
+    }
+
+    initial_chunks = client.get("/ready").json()["chunks"]
+
+    # 1. First ingest: adds new chunks
+    res = client.post("/v1/ingest", json=doc_payload)
+    assert res.status_code == 200
+    data = res.json()
+    doc_id = data["doc_id"]
+    added = data["added"]
+    assert added > 0
+    assert data["unchanged"] == 0
+    assert data["removed"] == 0
+    assert client.get("/ready").json()["chunks"] == initial_chunks + added
+
+    # 2. Re-ingest unchanged: zero embeddings spent, chunks unchanged
+    res_again = client.post("/v1/ingest", json=doc_payload)
+    assert res_again.status_code == 200
+    data_again = res_again.json()
+    assert data_again["doc_id"] == doc_id
+    assert data_again["added"] == 0
+    assert data_again["unchanged"] == added
+    assert data_again["removed"] == 0
+
+    # 3. Retrieve: search for the new document
+    ret_res = client.post(
+        "/v1/retrieve", json={"query": "superconducting qubits quantum supremacy", "k": 3}
+    )
+    assert ret_res.status_code == 200
+    top_hit = ret_res.json()["hits"][0]
+    assert top_hit["doc_id"] == doc_id
+    assert "Superconducting qubits" in top_hit["text"]
+
+    # 4. Delete document by hashed doc_id
+    del_res = client.delete(f"/v1/documents/{doc_id}")
+    assert del_res.status_code == 200
+    del_data = del_res.json()
+    assert del_data["doc_id"] == doc_id
+    assert del_data["deleted_chunks"] == added
+    assert client.get("/ready").json()["chunks"] == initial_chunks
+
+    # 5. Delete again returns 404
+    assert client.delete(f"/v1/documents/{doc_id}").status_code == 404
+
+
+def test_delete_by_source_uri_fallback(client: TestClient) -> None:
+    uri = "folder/subfolder/notes.md"
+    client.post(
+        "/v1/ingest",
+        json={
+            "source_uri": uri,
+            "content": "# Notes\n\nUnique telemetry data points for rocket trajectory.",
+        },
+    )
+
+    del_res = client.delete(f"/v1/documents/{uri}")
+    assert del_res.status_code == 200
+    assert del_res.json()["deleted_chunks"] > 0
+    assert client.delete(f"/v1/documents/{uri}").status_code == 404
+
+
+def test_ingest_file_multipart(client: TestClient) -> None:
+    content = b"# Distributed Systems\n\nConsensus protocols like Raft ensure state machine safety."
+    res = client.post(
+        "/v1/ingest/file",
+        files={"file": ("raft.md", content, "text/markdown")},
+        data={"source_uri": "raft.md"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["added"] > 0
+
+    # Clean up
+    client.delete(f"/v1/documents/{data['doc_id']}")
+
+
+def test_ingest_validation_errors(client: TestClient) -> None:
+    # Unsupported extension
+    res = client.post(
+        "/v1/ingest",
+        json={"source_uri": "archive.zip", "content": "not a supported format"},
+    )
+    assert res.status_code == 400
+    assert "not supported" in res.json()["detail"]
+
+    # Blank content
+    res_blank = client.post(
+        "/v1/ingest",
+        json={"source_uri": "notes.md", "content": "   \n\t   "},
+    )
+    assert res_blank.status_code == 400
+
+    # Empty file upload
+    res_file = client.post(
+        "/v1/ingest/file",
+        files={"file": ("empty.md", b"", "text/markdown")},
+    )
+    assert res_file.status_code == 400
+    assert "must not be empty" in res_file.json()["detail"]
+
+    # Delete missing
+    assert client.delete("/v1/documents/non_existent_doc_id").status_code == 404
+
 
 
 def test_build_container_wires_components_and_rebuilds_bm25(
